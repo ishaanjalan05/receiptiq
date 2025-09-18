@@ -1,0 +1,209 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Category {
+  GROCERIES
+  HOUSEHOLD
+  DINING
+  UTILITIES
+  TRANSPORT
+  MISC
+}
+
+enum TriggerType {
+  MERCHANT
+  KEYWORD
+}
+
+enum ActionSplit {
+  EQUAL
+  BY_PERCENT
+  ASSIGN_TO
+}
+
+enum Role {
+  OWNER
+  MEMBER
+}
+
+enum MemberStatus {
+  ACTIVE
+  PENDING
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  image         String?
+  emailVerified DateTime?
+
+  groups   Membership[]
+  receipts Receipt[]
+  rules    Rule[]
+
+  accounts Account[]
+  sessions Session[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Group {
+  id        String       @id @default(cuid())
+  name      String
+  createdBy String // if you added this earlier
+  members   Membership[]
+  receipts  Receipt[]
+  rules     Rule[]
+  invites   Invite[] // 👈 add this line
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+}
+
+model Membership {
+  id        String       @id @default(cuid())
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade) // <- add onDelete
+  userId    String
+  group     Group        @relation(fields: [groupId], references: [id], onDelete: Cascade) // <- add onDelete
+  groupId   String
+  role      Role         @default(MEMBER) // <- change from String to Role
+  status    MemberStatus @default(ACTIVE) // <- add
+  createdAt DateTime     @default(now())
+
+  @@unique([userId, groupId])
+}
+
+model Receipt {
+  id                 String     @id @default(cuid())
+  user               User       @relation(fields: [userId], references: [id])
+  userId             String
+  group              Group?     @relation(fields: [groupId], references: [id], onDelete: SetNull) // <- add onDelete
+  groupId            String?
+  merchantRaw        String?
+  merchantNormalized String?
+  purchaseDate       DateTime?
+  subtotal           Decimal?   @db.Decimal(10, 2)
+  tax                Decimal?   @db.Decimal(10, 2)
+  tip                Decimal?   @db.Decimal(10, 2)
+  total              Decimal?   @db.Decimal(10, 2)
+  ocrJson            Json?
+  imageUrl           String?
+  shareToken         String?    @unique
+  lineItems          LineItem[]
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  splits             Split[]
+
+  @@index([userId])
+  @@index([groupId])
+  @@index([merchantNormalized])
+}
+
+model Invite {
+  id        String   @id @default(cuid())
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  groupId   String
+  token     String   @unique
+  email     String? // optional: lock invite to an email
+  expiresAt DateTime
+  createdBy String // userId of the creator (matches Group.createdBy style)
+  createdAt DateTime @default(now())
+}
+
+model Split {
+  id         String   @id @default(cuid())
+  receipt    Receipt  @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  receiptId  String
+  createdBy  String   // userId who saved this split
+  snapshot   Json     // { participants, assign, propTaxTip, totals, createdAt }
+  shareToken String   @unique
+  createdAt  DateTime @default(now())
+
+  @@index([receiptId])
+}
+
+model LineItem {
+  id                    String    @id @default(cuid())
+  receipt               Receipt   @relation(fields: [receiptId], references: [id])
+  receiptId             String
+  descriptionRaw        String?
+  descriptionNormalized String?
+  qty                   Int?      @default(1)
+  unitPrice             Decimal?  @db.Decimal(10, 2)
+  lineTotal             Decimal?  @db.Decimal(10, 2)
+  category              Category? @default(MISC)
+  isShared              Boolean   @default(true)
+  assignedToIds         Json?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([receiptId])
+}
+
+model Rule {
+  id                String       @id @default(cuid())
+  user              User?        @relation(fields: [userId], references: [id])
+  userId            String?
+  group             Group?       @relation(fields: [groupId], references: [id])
+  groupId           String?
+  triggerType       TriggerType
+  triggerValue      String
+  actionCategory    Category?
+  actionSplit       ActionSplit?
+  actionAssignToIds Json?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([userId])
+  @@index([groupId])
+  @@index([triggerType, triggerValue])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
