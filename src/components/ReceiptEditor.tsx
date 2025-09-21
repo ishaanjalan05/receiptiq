@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import OpenSplitButton from "./OpenSplitButton";
 
 const CATEGORIES = ["GROCERIES","HOUSEHOLD","DINING","UTILITIES","TRANSPORT","MISC"] as const;
 
@@ -20,12 +22,22 @@ export default function ReceiptEditor({ receiptId }: { receiptId: string }) {
   const [date, setDate] = useState<string>("");
   const [items, setItems] = useState<Item[]>([]);
   const [totals, setTotals] = useState({ subtotal: 0, tax: 0, tip: 0, total: 0 });
+  const [newItemDesc, setNewItemDesc] = useState("");
+  const [newItemAmount, setNewItemAmount] = useState("");
 
   useEffect(() => {
     async function load() {
       setLoading(true);
-      const r = await fetch(`/api/receipts/${receiptId}`);
-      if (!r.ok) { setError(await r.text()); setLoading(false); return; }
+      const r = await fetch(`/api/receipts/${receiptId}`, { credentials: "include" });
+      if (!r.ok) {
+        if (r.status === 401) {
+          setError("You must be signed in to view this receipt.\nGo to Sign in to continue.");
+        } else {
+          setError(await r.text().catch(() => r.statusText));
+        }
+        setLoading(false);
+        return;
+      }
       const data = await r.json();
       setMerchant(data.merchantNormalized || data.merchantRaw || "");
       setDate(data.purchaseDate ? new Date(data.purchaseDate).toISOString().slice(0,10) : "");
@@ -63,12 +75,13 @@ export default function ReceiptEditor({ receiptId }: { receiptId: string }) {
     return Number((expected - (totals.total ?? 0)).toFixed(2));
   }, [totals]);
 
-  async function save() {
+    async function save() {
     setSaving(true);
     setError("");
     const res = await fetch(`/api/receipts/${receiptId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({
         merchantNormalized: merchant || undefined,
         purchaseDate: date || undefined,
@@ -76,16 +89,21 @@ export default function ReceiptEditor({ receiptId }: { receiptId: string }) {
         items,
       }),
     });
-    if (!res.ok) setError(await res.text());
-    setSaving(false);
+      if (!res.ok) {
+        setError(await res.text().catch(() => res.statusText));
+        setSaving(false);
+        return false;
+      }
+      setSaving(false);
+      return true;
   }
 
-    async function autoCategorize() {
+  async function autoCategorize() {
   setSaving(true);
   setError("");
 
   try {
-    const resp = await fetch(`/api/receipts/${receiptId}/categorize`, { method: "POST" });
+  const resp = await fetch(`/api/receipts/${receiptId}/categorize`, { method: "POST", credentials: "include" });
     if (!resp.ok) {
       const t = await resp.text().catch(() => "request failed");
       setError(`Auto-categorize failed: ${t}`);
@@ -113,9 +131,18 @@ export default function ReceiptEditor({ receiptId }: { receiptId: string }) {
   } finally {
     setSaving(false);
   }
-}
 
+  }
 
+  const addItem = () => {
+    const desc = newItemDesc.trim();
+    const amt = parseFloat(newItemAmount);
+    if (!desc || isNaN(amt)) return;
+    const it: Item = { id: Math.random().toString(36).slice(2, 8), descriptionRaw: desc, lineTotal: amt };
+    setItems((s) => [...s, it]);
+    setNewItemDesc("");
+    setNewItemAmount("");
+  };
 
   function patchItem(i: number, patch: Partial<Item>) {
     setItems(prev => prev.map((it, idx) => idx === i ? { ...it, ...patch } : it));
@@ -206,13 +233,27 @@ export default function ReceiptEditor({ receiptId }: { receiptId: string }) {
     Auto-categorize
   </button>
 
-    <a
-    href={`/receipts/${receiptId}/split`}
-    className="rounded bg-gray-700 text-white px-3 py-2"
-    >
-    Open Split Calculator
-    </a>
+    {Math.abs(computedSubtotal - (totals.subtotal ?? 0)) < 0.005 ? (
+      <OpenSplitButton receiptId={receiptId} computedSubtotal={computedSubtotal} totals={totals} save={save} />
+    ) : (
+      <button onClick={() => alert("Computed items subtotal does not match parsed subtotal. Please add/edit items until they match before opening the split calculator.")} className="rounded bg-amber-500 text-white px-3 py-2">Open Split Calculator</button>
+    )}
 </div>
+
+      {/* Add missing item UI (moved here) */}
+      <div className="mt-4 p-4 border rounded space-y-3">
+        <div className="text-sm font-medium">Add missing item</div>
+        <div className="flex gap-2">
+          <input value={newItemDesc} onChange={(e) => setNewItemDesc(e.target.value)} placeholder="Item description" className="rounded border p-2 text-sm flex-1" />
+          <input value={newItemAmount} onChange={(e) => setNewItemAmount(e.target.value)} placeholder="Amount" className="rounded border p-2 text-sm w-32" />
+          <button onClick={addItem} className="rounded bg-blue-600 text-white px-3 py-2 text-sm">Add item</button>
+        </div>
+
+        <div>
+          <div className="text-xs text-gray-500">Computed items subtotal</div>
+          <div className="text-2xl font-bold mt-1">${computedSubtotal.toFixed(2)}</div>
+        </div>
+      </div>
 
     </div>
   );

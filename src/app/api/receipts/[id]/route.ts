@@ -132,25 +132,52 @@ export async function PUT(
       })
     );
 
+    // Fetch existing lineItem ids for this receipt so we can decide create vs update
+    const existing = await prisma.lineItem.findMany({ where: { receiptId: id }, select: { id: true } });
+    const existingIds = new Set(existing.map((e) => e.id));
+
     for (const it of items || []) {
-      tx.push(
-        prisma.lineItem.update({
-          where: { id: it.id },
-          data: {
-            descriptionRaw: it.descriptionRaw ?? null,
-            qty: it.qty ?? 1,
-            unitPrice:
-              it.unitPrice !== undefined && it.unitPrice !== null
-                ? new Prisma.Decimal(it.unitPrice.toFixed(2))
-                : null,
-            lineTotal:
-              it.lineTotal !== undefined && it.lineTotal !== null
-                ? new Prisma.Decimal(it.lineTotal.toFixed(2))
-                : null,
-            category: it.category as any,
-          },
-        })
-      );
+      if (existingIds.has(it.id)) {
+        // update
+        tx.push(
+          prisma.lineItem.update({
+            where: { id: it.id },
+            data: {
+              descriptionRaw: it.descriptionRaw ?? null,
+              qty: it.qty ?? 1,
+              unitPrice:
+                it.unitPrice !== undefined && it.unitPrice !== null
+                  ? new Prisma.Decimal(it.unitPrice.toFixed(2))
+                  : null,
+              lineTotal:
+                it.lineTotal !== undefined && it.lineTotal !== null
+                  ? new Prisma.Decimal(it.lineTotal.toFixed(2))
+                  : null,
+              category: it.category as any,
+            },
+          })
+        );
+      } else {
+        // create new line item (client may use temporary ids), link to receipt
+        tx.push(
+          prisma.lineItem.create({
+            data: {
+              receiptId: id,
+              descriptionRaw: it.descriptionRaw ?? null,
+              qty: it.qty ?? 1,
+              unitPrice:
+                it.unitPrice !== undefined && it.unitPrice !== null
+                  ? new Prisma.Decimal(it.unitPrice.toFixed(2))
+                  : null,
+              lineTotal:
+                it.lineTotal !== undefined && it.lineTotal !== null
+                  ? new Prisma.Decimal(it.lineTotal.toFixed(2))
+                  : null,
+              category: it.category as any,
+            },
+          })
+        );
+      }
     }
 
     await prisma.$transaction(tx);

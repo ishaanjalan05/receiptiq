@@ -76,6 +76,8 @@ export default function SplitCalculator({ receiptId }: { receiptId: string }) {
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [people, setPeople] = useState<Person[]>([]);
   const [newName, setNewName] = useState("");
+  const [newItemDesc, setNewItemDesc] = useState("");
+  const [newItemAmount, setNewItemAmount] = useState("");
   const [assign, setAssign] = useState<Record<string, Set<string>>>({});
   const [propTaxTip, setPropTaxTip] = useState(true);
 
@@ -162,6 +164,21 @@ export default function SplitCalculator({ receiptId }: { receiptId: string }) {
     setNewName("");
   }
 
+  function addItem() {
+    const desc = newItemDesc.trim();
+    const amt = parseFloat(newItemAmount);
+    if (!desc || isNaN(amt)) return;
+    const li: LineItem = {
+      id: Math.random().toString(36).slice(2, 8),
+      descriptionRaw: desc,
+      lineTotal: amt,
+    };
+    setReceipt((r) => (r ? { ...r, lineItems: [...r.lineItems, li] } : r));
+    setAssign((prev) => ({ ...prev, [li.id]: new Set(people.map((p) => p.id)) }));
+    setNewItemDesc("");
+    setNewItemAmount("");
+  }
+
   function removePerson(pid: string) {
     setPeople((prev) => prev.filter((p) => p.id !== pid));
     setAssign((prev) => {
@@ -212,8 +229,11 @@ export default function SplitCalculator({ receiptId }: { receiptId: string }) {
       : baseItemC;
 
     // 4) allocate adjusted items by assignment
-    const perItems: Record<string, number> = {};
-    people.forEach((p) => (perItems[p.id] = 0));
+    // Build float weights per-person across ALL items first, then convert to
+    // integer cents using largest-remainder scaling. This prevents per-item
+    // rounding bias when many items have odd cents.
+    const perItemWeightsFloat: Record<string, number> = {};
+    people.forEach((p) => (perItemWeightsFloat[p.id] = 0));
 
     receipt.lineItems.forEach((li, idx) => {
       const amtC = adjItemC[idx];
@@ -222,11 +242,18 @@ export default function SplitCalculator({ receiptId }: { receiptId: string }) {
         people.some((p) => p.id === id)
       );
       const list = who.length ? who : people[0] ? [people[0].id] : [];
-      const shares = splitEvenC(amtC, list);
-      Object.entries(shares).forEach(
-        ([pid, c]) => (perItems[pid] = (perItems[pid] ?? 0) + c)
-      );
+      if (list.length === 0) return;
+      const perShare = amtC / list.length; // float cents per person for this item
+      for (const pid of list) perItemWeightsFloat[pid] += perShare;
     });
+
+    // Convert float weights to integer cents fairly across the whole items total
+    // Use itemsSumC (sum of adjusted items) as the target
+    const ids = people.map((p) => p.id);
+    const weightArr = ids.map((id) => perItemWeightsFloat[id] ?? 0);
+    const itemAllocArr = scaleToTargetC(weightArr, itemsSumC);
+    const perItems: Record<string, number> = {};
+    ids.forEach((id, i) => (perItems[id] = itemAllocArr[i] ?? 0));
 
     // 5) allocate tax/tip proportionally over item spend if enabled
     const itemsTotalC = Object.values(perItems).reduce((a, b) => a + b, 0);
@@ -467,6 +494,8 @@ inferred discount : $${results.meta.inferredDiscount.toFixed(2)}  (itemsSum - pr
           </tbody>
         </table>
       </div>
+
+  {/* (Add item moved to Receipt editor page) */}
 
       {/* Totals */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">

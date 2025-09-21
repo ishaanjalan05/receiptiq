@@ -37,6 +37,11 @@ export default function UploadReceipt() {
     setPreviewUrl(URL.createObjectURL(f));
   }
 
+  function openFilePicker() {
+    const el = document.getElementById("file-input") as HTMLInputElement | null;
+    el?.click();
+  }
+
   async function onUpload() {
     if (!file) return;
 
@@ -53,9 +58,11 @@ export default function UploadReceipt() {
     const { url, key } = await res.json();
 
     setStatus("Uploading to S3...");
-    const put = await fetch(url, { method: "PUT", body: file });
+    // S3 presigned PUTs often require the Content-Type header to match what was signed.
+    const put = await fetch(url, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
     if (!put.ok) {
-      setStatus(`Upload failed: ${put.status}`);
+      const text = await put.text().catch(() => "");
+      setStatus(`Upload failed: ${put.status} ${text}`);
       return;
     }
 
@@ -117,11 +124,14 @@ export default function UploadReceipt() {
       </label>
 
       {/* File picker + preview */}
-      <input
-        type="file"
-        accept="image/png,image/jpeg,image/jpg,application/pdf"
-        onChange={onSelect}
-      />
+      <div className="space-y-2">
+        <input id="file-input" type="file" accept="image/png,image/jpeg,image/jpg,application/pdf" onChange={onSelect} className="hidden" />
+        <div className="flex items-center gap-3">
+          <button onClick={openFilePicker} type="button" className="rounded border px-4 py-2 bg-white text-sm text-gray-800 hover:bg-gray-50">Choose file to upload…</button>
+          <div className="text-sm text-gray-700">{file ? file.name : "No file chosen"}</div>
+        </div>
+        <div className="text-sm text-gray-500">Accepted: JPG, PNG, PDF. After choosing a file press <span className="font-medium">Upload → Create → OCR</span>.</div>
+      </div>
       {previewUrl && (
         <img src={previewUrl} alt="preview" className="mt-2 rounded border max-h-72" />
       )}

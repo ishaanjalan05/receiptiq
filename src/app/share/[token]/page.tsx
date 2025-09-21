@@ -26,7 +26,7 @@ export default async function SharePage(
   }
 
   const sn: any = split.snapshot;
-  const title = split.receipt.merchantNormalized || split.receipt.maerchantRaw || "Receipt";
+  const title = split.receipt.merchantNormalized || split.receipt.merchantRaw || "Receipt";
 
   return (
     <main className="mx-auto max-w-2xl p-6 space-y-4">

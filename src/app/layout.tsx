@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import NamePrompt from "@/components/NamePrompt";
+import AuthAction from "@/components/AuthAction";
+import Providers from "@/components/Providers";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,7 +30,24 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        <Providers>
+        <header className="border-b p-4">
+          <nav className="max-w-5xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <a href="/" className="font-semibold">receiptiq</a>
+              <a href="/upload" className="text-sm text-gray-600 hover:underline">Upload</a>
+              <a href="/dashboard" className="text-sm text-gray-600 hover:underline">Dashboard</a>
+              <a href="/receipts" className="text-sm text-gray-600 hover:underline">Receipts</a>
+              <a href="/groups" className="text-sm text-gray-600 hover:underline">Groups</a>
+            </div>
+            <div className="flex items-center gap-4">
+              <NamePrompt />
+              <AuthAction />
+            </div>
+          </nav>
+        </header>
+  <main>{children}</main>
+  </Providers>
       </body>
     </html>
   );
