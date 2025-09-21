@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { parseAnalyzeExpense } from "@/lib/parseTextract";
 import { Prisma } from "@prisma/client";
 
+export const runtime = "nodejs";
 const REGION = process.env.AWS_REGION!;
 const BUCKET = process.env.S3_BUCKET!;
 const textract = new TextractClient({ region: REGION });

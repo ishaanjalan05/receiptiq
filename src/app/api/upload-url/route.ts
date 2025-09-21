@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 
 
 const s3 = new S3Client({ region: process.env.AWS_REGION });
+export const runtime = "nodejs";
 
 
 export async function POST(req: Request) {
